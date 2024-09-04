@@ -12,6 +12,7 @@ type Storage interface {
 	DeleteAccount(int) error
 	GetAccounts() ([]*Account, error)
 	GetAccountByID(int) (*Account, error)
+	GetAccountByNumber(int) (*Account, error)
 }
 
 type PostgresStore struct {
@@ -42,9 +43,10 @@ func (s *PostgresStore) Init() error {
 func (s *PostgresStore) createAccountTable() error {
 	query := `create table if not exists account (
 		id serial primary key,
-		first_name varchar(50),
-		last_name varchar(50),
+		first_name varchar(100),
+		last_name varchar(100),
 		number serial,
+    	encrypted_password varchar(100),
 		balance serial,
     	created_at timestamp
     )`
@@ -55,14 +57,15 @@ func (s *PostgresStore) createAccountTable() error {
 }
 func (s *PostgresStore) CreateAccount(acc *Account) error {
 	query := `insert into account
-	(first_name, last_name, number, balance, created_at)
-	values ($1, $2, $3, $4, $5)`
+	(first_name, last_name, number,encrypted_password, balance, created_at)
+	values ($1, $2, $3, $4, $5, $6)`
 
 	resp, err := s.db.Query(
 		query,
 		acc.FirstName,
 		acc.LastName,
 		acc.Number,
+		acc.EncryptedPassword,
 		acc.Balance,
 		acc.CreatedAt,
 	)
@@ -102,6 +105,7 @@ func (s *PostgresStore) GetAccounts() ([]*Account, error) {
 			&account.FirstName,
 			&account.LastName,
 			&account.Number,
+			&account.EncryptedPassword,
 			&account.Balance,
 			&account.CreatedAt,
 		); err != nil {
@@ -111,6 +115,16 @@ func (s *PostgresStore) GetAccounts() ([]*Account, error) {
 		accounts = append(accounts, account)
 	}
 	return accounts, nil
+}
+
+func (s *PostgresStore) GetAccountByNumber(number int) (*Account, error) {
+	row := s.db.QueryRow(`select * from account where number=$1`, number)
+	account, err := scanIntoAccount(row)
+	if err != nil {
+		return nil, fmt.Errorf("account with number [%d] not found", number)
+	}
+
+	return account, nil
 }
 
 func (s *PostgresStore) GetAccountByID(id int) (*Account, error) {
@@ -131,6 +145,7 @@ func scanIntoAccount(row *sql.Row) (*Account, error) {
 		&account.FirstName,
 		&account.LastName,
 		&account.Number,
+		&account.EncryptedPassword,
 		&account.Balance,
 		&account.CreatedAt)
 
